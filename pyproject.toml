@@ -1,0 +1,19 @@
+[tool.poetry]
+name = "crawl4ai-fastapi"
+version = "0.1.0"
+description = ""
+authors = ["Nguyen Tran <merlinvn@gmail.com>"]
+readme = "README.md"
+packages = [{ include = "crawl4ai_fastapi", from = "." }]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+fastapi = "^0.115.4"
+crawl4ai = "^0.3.72"
+uvicorn = {extras = ["standard"], version = "^0.32.0"}
+gunicorn = "^23.0.0"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
