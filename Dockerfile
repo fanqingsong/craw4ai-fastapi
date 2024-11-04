@@ -110,14 +110,15 @@ RUN --mount=type=cache,target=/root/.cache \
 
 # will become mountpoint of our code
 WORKDIR /app
-RUN playwright install
+# RUN playwright install
 
 COPY . .
 
 EXPOSE 8000
 ENV PROCESSOR_NAME=crawler
 
-CMD ["uvicorn", "crawl4ai_fastapi.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+# CMD ["uvicorn", "crawl4ai_fastapi.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+CMD playwright install && uvicorn crawl4ai_fastapi.main:app --host 0.0.0.0 --port 8000 --reload
 
 
 ################################
@@ -129,10 +130,10 @@ ENV FASTAPI_ENV=production
 COPY --from=builder-base $PYSETUP_PATH $PYSETUP_PATH
 
 WORKDIR /app
-RUN playwright install
+# RUN playwright install
 
 COPY crawl4ai_fastapi ./crawl4ai_fastapi
 
-CMD ["gunicorn", "-w", "4", "-k", "uvicorn.workers.UvicornWorker", "-b", "0.0.0.0:8000", "crawl4ai_fastapi.main:app"]
+# CMD ["gunicorn", "-w", "4", "-k", "uvicorn.workers.UvicornWorker", "-b", "0.0.0.0:8000", "crawl4ai_fastapi.main:app"]
 
-
+CMD playwright install && gunicorn -w 4 -k uvicorn.workers.UvicornWorker -b 0.0.0.0:8000 crawl4ai_fastapi.main:app
