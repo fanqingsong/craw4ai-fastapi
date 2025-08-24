@@ -1,0 +1,8 @@
+fastapi>=0.115.4
+crawl4ai>=0.3.72
+uvicorn[standard]>=0.32.0
+gunicorn>=23.0.0
+slowapi>=0.1.9
+pydantic>=2.9.2
+pydantic-settings>=2.6.1
+playwright>=1.40.0

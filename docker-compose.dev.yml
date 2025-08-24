@@ -1,10 +1,5 @@
 version: '3.8'
 
-# 默认使用开发环境配置
-# 使用方式:
-#   docker-compose up                    # 开发环境
-#   docker-compose -f docker-compose.prod.yml up  # 生产环境
-
 services:
   web:
     build:
@@ -19,4 +14,4 @@ services:
       - REQUEST_TIMEOUT=60
     volumes:
       - .:/app  # 代码热重载
-    command: ["sh", "-c", "playwright install && uvicorn crawl4ai_fastapi.main:app --host 0.0.0.0 --port 8000 --reload"] 
+    command: ["sh", "-c", "playwright install && uvicorn crawl4ai_fastapi.main:app --host 0.0.0.0 --port 8000 --reload"]
