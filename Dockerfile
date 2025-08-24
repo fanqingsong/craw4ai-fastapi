@@ -1,5 +1,5 @@
-# syntax=docker/dockerfile:1
-# Keep this syntax directive! It's used to enable Docker BuildKit
+# Dockerfile for crawl4ai-fastapi
+# Using multi-stage build for optimization
 
 # Based on https://github.com/python-poetry/poetry/discussions/1879?sort=top#discussioncomment-216865
 # but I try to keep it updated (see history)
@@ -8,7 +8,7 @@
 # PYTHON-BASE
 # Sets up all our shared environment variables
 ################################
-FROM python:3.11-slim AS python-base
+FROM swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/python:3.11-slim AS python-base
 
     # python
 ENV PYTHONUNBUFFERED=1 \
@@ -39,7 +39,11 @@ ENV PYTHONUNBUFFERED=1 \
 ENV PATH="$POETRY_HOME/bin:$VENV_PATH/bin:$PATH"
 
 # Update the package list and install necessary libraries
-RUN apt-get update && apt-get install -y \
+# 使用阿里云镜像源加速apt下载
+RUN echo "deb https://mirrors.aliyun.com/debian/ bookworm main" > /etc/apt/sources.list.d/aliyun.list \
+    && echo "deb https://mirrors.aliyun.com/debian-security/ bookworm-security main" >> /etc/apt/sources.list.d/aliyun.list \
+    && echo "deb https://mirrors.aliyun.com/debian/ bookworm-updates main" >> /etc/apt/sources.list.d/aliyun.list \
+    && apt-get update && apt-get install -y \
     libglib2.0-0 \
     libnss3 \
     libnspr4 \
@@ -69,7 +73,11 @@ RUN apt-get update && apt-get install -y \
 # Used to build deps + create our virtual environment
 ################################
 FROM python-base AS builder-base
-RUN apt-get update \
+# 使用阿里云镜像源加速apt下载
+RUN echo "deb https://mirrors.aliyun.com/debian/ bookworm main" > /etc/apt/sources.list.d/aliyun.list \
+    && echo "deb https://mirrors.aliyun.com/debian-security/ bookworm-security main" >> /etc/apt/sources.list.d/aliyun.list \
+    && echo "deb https://mirrors.aliyun.com/debian/ bookworm-updates main" >> /etc/apt/sources.list.d/aliyun.list \
+    && apt-get update \
     && apt-get install --no-install-recommends -y \
         # deps for installing poetry
         curl \
@@ -118,7 +126,7 @@ EXPOSE 8000
 ENV PROCESSOR_NAME=crawler
 
 # CMD ["uvicorn", "crawl4ai_fastapi.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
-CMD playwright install && uvicorn crawl4ai_fastapi.main:app --host 0.0.0.0 --port 8000 --reload
+CMD ["sh", "-c", "playwright install && uvicorn crawl4ai_fastapi.main:app --host 0.0.0.0 --port 8000 --reload"]
 
 
 ################################
@@ -136,4 +144,4 @@ COPY crawl4ai_fastapi ./crawl4ai_fastapi
 
 # CMD ["gunicorn", "-w", "4", "-k", "uvicorn.workers.UvicornWorker", "-b", "0.0.0.0:8000", "crawl4ai_fastapi.main:app"]
 
-CMD playwright install && gunicorn -w 4 -k uvicorn.workers.UvicornWorker -b 0.0.0.0:8000 crawl4ai_fastapi.main:app
+CMD ["sh", "-c", "playwright install && gunicorn -w 4 -k uvicorn.workers.UvicornWorker -b 0.0.0.0:8000 crawl4ai_fastapi.main:app"]
