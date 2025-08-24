@@ -1,8 +1,5 @@
 # Dockerfile for crawl4ai-fastapi
-# Using multi-stage build for optimization
-
-# Based on https://github.com/python-poetry/poetry/discussions/1879?sort=top#discussioncomment-216865
-# but I try to keep it updated (see history)
+# Using multi-stage build with uv for faster package management
 
 ################################
 # PYTHON-BASE
@@ -19,31 +16,30 @@ ENV PYTHONUNBUFFERED=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=on \
     PIP_DEFAULT_TIMEOUT=100 \
     \
-    # poetry
-    # https://python-poetry.org/docs/configuration/#using-environment-variables
-    POETRY_VERSION=1.3.2 \
-    # make poetry install to this location
-    POETRY_HOME="/opt/poetry" \
-    # make poetry create the virtual environment in the project's root
+    # uv
+    UV_VERSION=0.2.0 \
+    # make uv install to this location
+    UV_HOME="/opt/uv" \
+    # make uv create the virtual environment in the project's root
     # it gets named `.venv`
-    POETRY_VIRTUALENVS_IN_PROJECT=true \
+    UV_VIRTUALENV_IN_PROJECT=true \
     # do not ask any interactive question
-    POETRY_NO_INTERACTION=1 \
+    UV_NO_INTERACTION=1 \
     \
     # paths
     # this is where our requirements + virtual environment will live
     PYSETUP_PATH="/opt/pysetup" \
     VENV_PATH="/opt/pysetup/.venv"
 
-# prepend poetry and venv to path
-ENV PATH="$POETRY_HOME/bin:$VENV_PATH/bin:$PATH"
+# prepend uv and venv to path
+ENV PATH="$UV_HOME/bin:$VENV_PATH/bin:$PATH"
 
 # Update the package list and install necessary libraries
-# 使用阿里云镜像源加速apt下载
-RUN echo "deb https://mirrors.aliyun.com/debian/ bookworm main" > /etc/apt/sources.list.d/aliyun.list \
-    && echo "deb https://mirrors.aliyun.com/debian-security/ bookworm-security main" >> /etc/apt/sources.list.d/aliyun.list \
-    && echo "deb https://mirrors.aliyun.com/debian/ bookworm-updates main" >> /etc/apt/sources.list.d/aliyun.list \
-    && apt-get update && apt-get install -y \
+# 使用清华大学镜像源加速apt下载
+RUN echo "deb https://mirrors.tuna.tsinghua.edu.cn/debian/ bookworm main" > /etc/apt/sources.list && \
+    echo "deb https://mirrors.tuna.tsinghua.edu.cn/debian-security/ bookworm-security main" >> /etc/apt/sources.list && \
+    echo "deb https://mirrors.tuna.tsinghua.edu.cn/debian/ bookworm-updates main" >> /etc/apt/sources.list && \
+    apt-get update && apt-get install -y \
     libglib2.0-0 \
     libnss3 \
     libnspr4 \
@@ -73,32 +69,35 @@ RUN echo "deb https://mirrors.aliyun.com/debian/ bookworm main" > /etc/apt/sourc
 # Used to build deps + create our virtual environment
 ################################
 FROM python-base AS builder-base
-# 使用阿里云镜像源加速apt下载
-RUN echo "deb https://mirrors.aliyun.com/debian/ bookworm main" > /etc/apt/sources.list.d/aliyun.list \
-    && echo "deb https://mirrors.aliyun.com/debian-security/ bookworm-security main" >> /etc/apt/sources.list.d/aliyun.list \
-    && echo "deb https://mirrors.aliyun.com/debian/ bookworm-updates main" >> /etc/apt/sources.list.d/aliyun.list \
-    && apt-get update \
+# 使用清华大学镜像源加速apt下载
+RUN echo "deb https://mirrors.tuna.tsinghua.edu.cn/debian/ bookworm main" > /etc/apt/sources.list && \
+    echo "deb https://mirrors.tuna.tsinghua.edu.cn/debian-security/ bookworm-security main" >> /etc/apt/sources.list && \
+    echo "deb https://mirrors.tuna.tsinghua.edu.cn/debian/ bookworm-updates main" >> /etc/apt/sources.list && \
+    apt-get update \
     && apt-get install --no-install-recommends -y \
-        # deps for installing poetry
+        # deps for installing uv
         curl \
         # deps for building python deps
         build-essential
 
-# install poetry - respects $POETRY_VERSION & $POETRY_HOME
-# The --mount will mount the buildx cache directory to where 
-# Poetry and Pip store their cache so that they can re-use it
+# install uv - 使用国内镜像源加速安装
 RUN --mount=type=cache,target=/root/.cache \
-    curl -sSL https://install.python-poetry.org | python3 -
+    mkdir -p /opt/uv/bin && \
+    pip install --no-cache-dir uv && \
+    ln -sf $(which uv) /opt/uv/bin/uv && \
+    chmod +x /opt/uv/bin/uv && \
+    uv --version
 
 # copy project requirement files here to ensure they will be cached.
 WORKDIR $PYSETUP_PATH
 
 # COPY . ./
-COPY poetry.lock pyproject.toml ./
+COPY requirements.txt ./
 
-# install runtime deps - uses $POETRY_VIRTUALENVS_IN_PROJECT internally
+# 配置uv使用国内镜像源并安装依赖
 RUN --mount=type=cache,target=/root/.cache \
-    poetry install --without=dev --no-root
+    uv venv && \
+    UV_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple/ uv pip install -r requirements.txt
 
 ################################
 # DEVELOPMENT
@@ -108,25 +107,22 @@ FROM python-base AS development
 ENV FASTAPI_ENV=development
 WORKDIR $PYSETUP_PATH
 
-# copy in our built poetry + venv
-COPY --from=builder-base $POETRY_HOME $POETRY_HOME
+# copy in our built uv + venv
+COPY --from=builder-base $UV_HOME $UV_HOME
 COPY --from=builder-base $PYSETUP_PATH $PYSETUP_PATH
-
-# quicker install as runtime deps are already installed
-RUN --mount=type=cache,target=/root/.cache \
-    poetry install --with=dev --no-root
 
 # will become mountpoint of our code
 WORKDIR /app
-# RUN playwright install
 
 COPY . .
+
+# 安装 playwright 和浏览器
+RUN python -m playwright install
 
 EXPOSE 8000
 ENV PROCESSOR_NAME=crawler
 
-# CMD ["uvicorn", "crawl4ai_fastapi.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
-CMD ["sh", "-c", "playwright install && uvicorn crawl4ai_fastapi.main:app --host 0.0.0.0 --port 8000 --reload"]
+CMD ["uvicorn", "crawl4ai_fastapi.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
 
 
 ################################
@@ -138,10 +134,10 @@ ENV FASTAPI_ENV=production
 COPY --from=builder-base $PYSETUP_PATH $PYSETUP_PATH
 
 WORKDIR /app
-# RUN playwright install
 
 COPY crawl4ai_fastapi ./crawl4ai_fastapi
 
-# CMD ["gunicorn", "-w", "4", "-k", "uvicorn.workers.UvicornWorker", "-b", "0.0.0.0:8000", "crawl4ai_fastapi.main:app"]
+# 安装 playwright 和浏览器
+RUN python -m playwright install
 
-CMD ["sh", "-c", "playwright install && gunicorn -w 4 -k uvicorn.workers.UvicornWorker -b 0.0.0.0:8000 crawl4ai_fastapi.main:app"]
+CMD ["gunicorn", "-w", "4", "-k", "uvicorn.workers.UvicornWorker", "-b", "0.0.0.0:8000", "crawl4ai_fastapi.main:app"]
